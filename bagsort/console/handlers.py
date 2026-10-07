@@ -6,6 +6,7 @@ from bagsort.checkin.entries import Entry
 from bagsort.model.entities import Flight, Reading
 from bagsort.model.validate import validate_flight
 from bagsort.reporting import csv_export
+from bagsort.reporting.recompute import caliber_history
 from bagsort.sequence.allocator import preview
 from bagsort.store.replay import replay
 from .http import Request, Response, csv_response, json_response, text_response
@@ -113,6 +114,116 @@ def handle_report(server, request: Request) -> Response:
 
 def handle_report_flights(server, request: Request) -> Response:
     return json_response(_plant(server).report.flight_rows())
+
+
+def _rules_payload(request: Request) -> dict[str, object]:
+    rules = request.payload.get("rules", {})
+    if not isinstance(rules, dict):
+        from bagsort.console.http import RequestError
+
+        raise RequestError(400, "field rules must be an object")
+    return rules
+
+
+def handle_active_caliber(server, request: Request) -> Response:
+    caliber = _plant(server).calibers.active()
+    if caliber is None:
+        return json_response({"error": "no active caliber"}, status=404)
+    return json_response(caliber.as_dict())
+
+
+def handle_list_calibers(server, request: Request) -> Response:
+    plant = _plant(server)
+    active = plant.calibers.active_version()
+    rows = []
+    for caliber in plant.calibers.list():
+        data = caliber.as_dict()
+        data["active"] = caliber.version == active
+        rows.append(data)
+    return json_response(rows)
+
+
+def handle_register_caliber(server, request: Request) -> Response:
+    plant = _plant(server)
+    caliber = plant.register_caliber(
+        request.required("version"),
+        request.str_field("name"),
+        _rules_payload(request),
+    )
+    return json_response(caliber.as_dict(), status=201)
+
+
+def handle_seed_calibers(server, request: Request) -> Response:
+    plant = _plant(server)
+    result = plant.seed_calibers()
+    if not plant.calibers.active():
+        plant.activate_caliber("v1", reason="initial caliber")
+    return json_response({**result, "active": plant.calibers.active_version()})
+
+
+def handle_caliber_history(server, request: Request) -> Response:
+    plant = _plant(server)
+    return json_response(caliber_history(plant.store, plant.calibers))
+
+
+def handle_activate_caliber(server, request: Request) -> Response:
+    plant = _plant(server)
+    reason = request.str_field("reason")
+    caliber = plant.activate_caliber(request.param("version"), reason)
+    return json_response({**caliber.as_dict(), "active": True})
+
+
+def handle_compare_calibers(server, request: Request) -> Response:
+    plant = _plant(server)
+    left = request.query_str("left") or "v1"
+    right = request.query_str("right") or "v2"
+    return json_response(plant.recomputer.compare_calibers(left, right))
+
+
+def handle_issue_report(server, request: Request) -> Response:
+    run = _plant(server).issue_report()
+    return json_response(run.as_dict(), status=201)
+
+
+def handle_list_reports(server, request: Request) -> Response:
+    return json_response([run.as_dict() for run in _plant(server).reports.list()])
+
+
+def handle_get_report(server, request: Request) -> Response:
+    return json_response(_plant(server).reports.require(request.param("id")).as_dict())
+
+
+def handle_import_legacy(server, request: Request) -> Response:
+    plant = _plant(server)
+    version = request.str_field("caliber_version") or "v1"
+    metrics = request.payload.get("metrics", {})
+    if not isinstance(metrics, dict):
+        from bagsort.console.http import RequestError
+
+        raise RequestError(400, "field metrics must be an object")
+    run = plant.reports.import_legacy(
+        version,
+        request.int_field("watermark", plant.store.watermark),
+        metrics,
+        request.str_field("at"),
+    )
+    return json_response(run.as_dict(), status=201)
+
+
+def handle_recompute(server, request: Request) -> Response:
+    plant = _plant(server)
+    compare = request.query_str("with")
+    return json_response(plant.recomputer.recompute(request.param("id"), compare))
+
+
+def handle_corroborate(server, request: Request) -> Response:
+    plant = _plant(server)
+    export_row: dict[str, object] | None = None
+    run_id = request.param("id")
+    if request.query_str("export") == "1":
+        rows = csv_export.report_rows([plant.reports.require(run_id)])
+        export_row = rows[0] if rows else None
+    return json_response(plant.recomputer.corroborate(run_id, export_row))
 
 
 def handle_events(server, request: Request) -> Response:
@@ -778,3 +889,18 @@ def handle_export_sort(server, request: Request) -> Response:
 def handle_export_loads(server, request: Request) -> Response:
     records = _plant(server).belt.loads()
     return csv_response(csv_export.render(csv_export.LOAD_COLUMNS, csv_export.load_rows(records)))
+
+
+def handle_export_reports(server, request: Request) -> Response:
+    runs = _plant(server).reports.list()
+    return csv_response(csv_export.render(csv_export.REPORT_COLUMNS, csv_export.report_rows(runs)))
+
+
+def handle_export_calibers(server, request: Request) -> Response:
+    plant = _plant(server)
+    return csv_response(
+        csv_export.render(
+            csv_export.CALIBER_COLUMNS,
+            csv_export.caliber_rows(plant.calibers.history()),
+        )
+    )

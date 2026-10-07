@@ -36,7 +36,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="bagsort", description="line control service")
     parser.add_argument("--state", default="var/state.json", help="journal snapshot path")
     parser.add_argument("--terminal", default=DEFAULT_TERMINAL, help="terminal namespace")
-    parser.add_argument("--version", action="store_true", help="print the build version and exit")
+    parser.add_argument(
+        "--version",
+        action="store_true",
+        dest="show_version",
+        help="print the build version and exit",
+    )
     commands = parser.add_subparsers(dest="command")
 
     serve = commands.add_parser("serve", help="run the JSON control console")
@@ -51,6 +56,27 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("report", help="print the plant report")
     commands.add_parser("status", help="print the store status")
     commands.add_parser("export", help="print audit and sort records as CSV")
+
+    caliber = commands.add_parser("caliber", help="reporting caliber governance")
+    caliber_sub = caliber.add_subparsers(dest="caliber_command")
+    caliber_sub.add_parser("list", help="list registered caliber versions")
+    caliber_sub.add_parser("history", help="show the activation ledger")
+    activate = caliber_sub.add_parser("activate", help="activate one caliber version")
+    activate.add_argument("calver", help="the version to activate, e.g. v2")
+    activate.add_argument("--reason", default="", help="why the caliber changed")
+    activate.add_argument("--persist", action="store_true", help="write a snapshot afterwards")
+    seed_cal = caliber_sub.add_parser("seed", help="register builtin calibers and activate v1")
+    seed_cal.add_argument("--persist", action="store_true", help="write a snapshot afterwards")
+    compare = caliber_sub.add_parser("compare", help="side by side new/old caliber diff")
+    compare.add_argument("--left", default="v1", help="first caliber version")
+    compare.add_argument("--right", default="v2", help="second caliber version")
+
+    issue = commands.add_parser("issue-report", help="issue a versioned report")
+    issue.add_argument("--persist", action="store_true", help="write a snapshot afterwards")
+
+    recompute = commands.add_parser("recompute", help="forward recompute an issued report")
+    recompute.add_argument("run_id", help="the report run id, e.g. rpt-000001")
+    recompute.add_argument("--with", dest="with_version", default="", help="counterfactual caliber")
 
     seed = commands.add_parser("seed", help="seed default lanes and flights")
     seed.add_argument("--persist", action="store_true", help="write a snapshot afterwards")
@@ -118,6 +144,57 @@ def _command_export(plant: Plant) -> int:
     return 0
 
 
+def _command_caliber(store: Store, plant: Plant, args: argparse.Namespace) -> int:
+    from .reporting.recompute import caliber_history
+
+    sub = args.caliber_command
+    if sub == "list":
+        active = plant.calibers.active_version()
+        for caliber in plant.calibers.list():
+            marker = "*" if caliber.version == active else " "
+            print(f"{marker} {caliber.version} {caliber.name} {caliber.digest[:12]}")
+        return 0
+    if sub == "history":
+        for row in caliber_history(plant.store, plant.calibers):
+            print(
+                f"{row['sequence']:>3} {row['version']} @{row['watermark']} "
+                f"{row['at']} {row['reason']}"
+            )
+        return 0
+    if sub == "activate":
+        caliber = plant.activate_caliber(args.calver, args.reason)
+        print(json.dumps({"active": caliber.version, "digest": caliber.digest}, sort_keys=True))
+    elif sub == "seed":
+        result = plant.seed_calibers()
+        if not plant.calibers.active():
+            plant.activate_caliber("v1", reason="initial caliber")
+        print(
+            json.dumps(
+                {**result, "active": plant.calibers.active_version()}, sort_keys=True
+            )
+        )
+    elif sub == "compare":
+        diff = plant.recomputer.compare_calibers(args.left, args.right)
+        print(json.dumps(diff, ensure_ascii=False, indent=2, sort_keys=True))
+    if getattr(args, "persist", False):
+        store.persist()
+    return 0
+
+
+def _command_issue_report(store: Store, plant: Plant, args: argparse.Namespace) -> int:
+    run = plant.issue_report()
+    print(json.dumps(run.as_dict(), ensure_ascii=False, indent=2, sort_keys=True))
+    if getattr(args, "persist", False):
+        store.persist()
+    return 0
+
+
+def _command_recompute(plant: Plant, args: argparse.Namespace) -> int:
+    result = plant.recomputer.recompute(args.run_id, args.with_version)
+    print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+    return 0
+
+
 def _command_seed(store: Store, plant: Plant, args: argparse.Namespace) -> int:
     seeded = seed_defaults(plant)
     print(json.dumps(seeded, ensure_ascii=False, sort_keys=True))
@@ -137,7 +214,7 @@ def _command_reset(store: Store, plant: Plant, args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.version:
+    if args.show_version:
         print(version_string())
         return 0
 
@@ -159,6 +236,12 @@ def main(argv: list[str] | None = None) -> int:
         return _command_status(store, plant)
     if args.command == "export":
         return _command_export(plant)
+    if args.command == "caliber":
+        return _command_caliber(store, plant, args)
+    if args.command == "issue-report":
+        return _command_issue_report(store, plant, args)
+    if args.command == "recompute":
+        return _command_recompute(plant, args)
     if args.command == "seed":
         return _command_seed(store, plant, args)
     if args.command == "reset":

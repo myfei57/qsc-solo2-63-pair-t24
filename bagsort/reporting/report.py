@@ -18,6 +18,7 @@ class PlantReport:
         audit: object,
         namespace: object,
         topology: object,
+        calibers: object | None = None,
     ) -> None:
         self._store = store
         self._book = book
@@ -27,6 +28,7 @@ class PlantReport:
         self._audit = audit
         self._ns = namespace
         self._topology = topology
+        self._calibers = calibers
 
     def summary(self) -> dict[str, object]:
         flights = self._book.list()
@@ -70,6 +72,12 @@ class PlantReport:
 
     def text(self) -> str:
         summary = self.summary()
+        caliber = self._calibers.active() if self._calibers is not None else None
+        caliber_line = (
+            f"report caliber    : {caliber.version} ({caliber.name})"
+            if caliber is not None
+            else "report caliber    : (none activated)"
+        )
         lines = [
             f"terminal          : {summary['terminal']}",
             f"line              : {' -> '.join(summary['line'])}",
@@ -80,5 +88,6 @@ class PlantReport:
             f"audit entries     : {summary['audit_entries']} intact={summary['audit_intact']}",
             f"carousel          : {summary['carousel']} batch={summary['batch']}",
             f"journal watermark : {summary['watermark']}",
+            caliber_line,
         ]
         return "\n".join(lines) + "\n"

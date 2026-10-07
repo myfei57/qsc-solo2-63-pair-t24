@@ -29,6 +29,9 @@ from bagsort.ns.topology import handling_line
 from bagsort.quota.quota import QuotaBook
 from bagsort.recheck.queue import RecheckQueue
 from bagsort.reporting.report import PlantReport
+from bagsort.reporting.book import CaliberBook
+from bagsort.reporting.issuer import ReportOffice
+from bagsort.reporting.recompute import Recomputer
 from bagsort.sequence.verdict import VerdictTracker
 from bagsort.sorter.sorter import Sorter
 from bagsort.store.store import Store
@@ -68,6 +71,9 @@ class Plant:
     belt: Belt
     quota: QuotaBook
     audit: AuditChain
+    calibers: CaliberBook
+    reports: ReportOffice
+    recomputer: Recomputer
     report: PlantReport
 
     @property
@@ -107,6 +113,9 @@ class Plant:
         belt = Belt(store, clock, IdFactory("cmd"))
 
         audit = AuditChain(store, clock, handling_line())
+        calibers = CaliberBook(store, clock)
+        reports = ReportOffice(store, calibers, audit, clock, IdFactory("rpt"))
+        recomputer = Recomputer(store, calibers, reports)
         audit_subscriber = _AuditSubscriber(audit)
         for topic in (
             "bag.checked_in",
@@ -117,11 +126,13 @@ class Plant:
             "chute.assigned",
             "belt.switched",
             "bag.remapped",
+            "caliber.registered",
+            "caliber.activated",
         ):
             bus.subscribe(topic, audit_subscriber)
 
         report = PlantReport(
-            store, book, chutes, belt, quota, audit, namespace, handling_line()
+            store, book, chutes, belt, quota, audit, namespace, handling_line(), calibers
         )
         return cls(
             store=store,
@@ -146,6 +157,9 @@ class Plant:
             belt=belt,
             quota=quota,
             audit=audit,
+            calibers=calibers,
+            reports=reports,
+            recomputer=recomputer,
             report=report,
         )
 
@@ -243,6 +257,46 @@ class Plant:
     def set_quota(self, flight_id: str, limit: int) -> int:
         return self.quota.set_limit(flight_id, limit)
 
+    # -- reporting calibers -----------------------------------------------
+
+    def register_caliber(self, version: str, name: str, rules: dict[str, object]):
+        caliber = self.calibers.register(version, name, rules)
+        self.bus.publish(
+            "caliber.registered",
+            version=caliber.version,
+            caliber_digest=caliber.digest,
+        )
+        return caliber
+
+    def seed_calibers(self) -> dict[str, object]:
+        """Register the builtin calibers idempotently, auditing each registration.
+
+        Registration and activation stay separate so introducing a version
+        never silently makes it the caliber in force. Governance runs through
+        the event publishing operations so every introduction is visible in
+        the audit chain, never just the journal.
+        """
+
+        from bagsort.reporting.caliber import BUILTIN_CALIBERS
+
+        for item in BUILTIN_CALIBERS:
+            if self.calibers.get(item["version"]) is None:
+                self.register_caliber(item["version"], str(item["name"]), dict(item["rules"]))
+        return {"versions": [c.version for c in self.calibers.list()]}
+
+    def activate_caliber(self, version: str, reason: str = ""):
+        caliber = self.calibers.activate(version, reason)
+        self.bus.publish(
+            "caliber.activated",
+            version=caliber.version,
+            caliber_digest=caliber.digest,
+            reason=reason,
+        )
+        return caliber
+
+    def issue_report(self):
+        return self.reports.issue()
+
     def verify(self) -> bool:
         return self.audit.verify()
 
@@ -259,6 +313,8 @@ class _AuditSubscriber:
         "chute.assigned": ("chute_assign", "chute"),
         "belt.switched": ("belt_switch", "belt"),
         "bag.remapped": ("remap", "checkin"),
+        "caliber.registered": ("caliber_register", "governance"),
+        "caliber.activated": ("caliber_change", "governance"),
     }
 
     def __init__(self, audit: AuditChain) -> None:
@@ -273,11 +329,12 @@ class _AuditSubscriber:
             event.payload.get("bag_id")
             or event.payload.get("flight_id")
             or event.payload.get("carousel")
+            or event.payload.get("version")
             or ""
         )
         detail = {
             key: value
             for key, value in event.payload.items()
-            if key not in {"bag_id", "flight_id"}
+            if key not in {"bag_id", "flight_id", "version"}
         }
         self._audit.record(kind, subject, stage, detail)

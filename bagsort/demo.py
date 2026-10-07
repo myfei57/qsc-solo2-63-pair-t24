@@ -39,6 +39,16 @@ def run_demo(plant: "Plant", cycles: int = 6) -> dict[str, object]:
     duplicate_retry = plant.retry_bag(checked_in[0].id)
     diverted = plant.divert_bag(checked_in[-1].id)
 
+    # Reports carry the caliber they were issued under. Issue one under v1,
+    # then upgrade to v2 and issue again so the old/new split is reproducible.
+    plant.seed_calibers()
+    if not plant.calibers.active():
+        plant.activate_caliber("v1", reason="initial caliber")
+    v1_report = plant.issue_report()
+    plant.activate_caliber("v2", reason="count diverted capacity and total handled")
+    v2_report = plant.issue_report()
+    v1_recompute = plant.recomputer.recompute(v1_report.run_id, compare_version="v2")
+
     recheck_bag = checked_in[1]
     plant.enqueue_recheck(recheck_bag.id)
     recheck_items = plant.recheck.length()
@@ -71,6 +81,12 @@ def run_demo(plant: "Plant", cycles: int = 6) -> dict[str, object]:
         "flight_state": closed.state.value,
         "audit_entries": plant.audit.count(),
         "audit_intact": plant.audit.verify(),
+        "active_caliber": plant.calibers.active_version(),
+        "v1_report": v1_report.run_id,
+        "v2_report": v2_report.run_id,
+        "v1_recompute_matches": v1_recompute["matches"],
+        "v1_recompute_feasible": v1_recompute["feasible"],
+        "counterfactual_present": v1_recompute.get("counterfactual") is not None,
         "watermark": plant.store.watermark,
         "events": plant.telemetry.total(),
         "audit_verified": plant.verify(),
@@ -88,5 +104,9 @@ def invariants_hold(summary: dict[str, object]) -> bool:
         and summary["carousel_cleared"] >= 1
         and summary["load_records"] >= 1
         and summary["flight_state"] == "closed"
+        and summary["active_caliber"] == "v2"
+        and summary["v1_recompute_matches"] is True
+        and summary["v1_recompute_feasible"] is True
+        and summary["counterfactual_present"] is True
         and int(summary["watermark"]) > 0
     )

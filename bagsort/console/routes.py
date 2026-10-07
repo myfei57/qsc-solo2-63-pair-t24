@@ -43,6 +43,19 @@ def route_table() -> list[Route]:
         Route("GET", "/api/telemetry", "domain event counters", "handle_telemetry"),
         Route("GET", "/api/report", "plain text plant report", "handle_report"),
         Route("GET", "/api/report/flights", "per flight report rows", "handle_report_flights"),
+        Route("GET", "/api/report/caliber", "the caliber currently in force", "handle_active_caliber"),
+        Route("GET", "/api/report/calibers", "list registered caliber versions", "handle_list_calibers"),
+        Route("POST", "/api/report/calibers", "register a caliber version", "handle_register_caliber"),
+        Route("POST", "/api/report/calibers/seed", "register builtin calibers", "handle_seed_calibers"),
+        Route("GET", "/api/report/calibers/history", "caliber activation ledger", "handle_caliber_history"),
+        Route("GET", "/api/report/calibers/diff", "side by side rule and metric diff", "handle_compare_calibers"),
+        Route("POST", "/api/report/calibers/{version}/activate", "activate one caliber", "handle_activate_caliber"),
+        Route("POST", "/api/report/runs", "issue a versioned report", "handle_issue_report"),
+        Route("GET", "/api/report/runs", "list issued report runs", "handle_list_reports"),
+        Route("GET", "/api/report/runs/{id}", "read one issued report", "handle_get_report"),
+        Route("POST", "/api/report/runs/{id}/legacy", "import a pre-versioning report", "handle_import_legacy"),
+        Route("GET", "/api/report/runs/{id}/recompute", "forward recompute a report", "handle_recompute"),
+        Route("GET", "/api/report/runs/{id}/verify", "cross check journal audit and export", "handle_corroborate"),
         Route("GET", "/api/events", "recent domain events", "handle_events"),
         Route("GET", "/api/events/{topic}", "subscribers registered for a topic", "handle_events_topic"),
         Route("POST", "/api/telemetry/reset", "reset event counters", "handle_telemetry_reset"),
@@ -156,6 +169,8 @@ def route_table() -> list[Route]:
         Route("GET", "/api/export/audit.csv", "audit trail as CSV", "handle_export_audit"),
         Route("GET", "/api/export/sort.csv", "sort records as CSV", "handle_export_sort"),
         Route("GET", "/api/export/loads.csv", "load records as CSV", "handle_export_loads"),
+        Route("GET", "/api/export/reports.csv", "issued report runs as CSV", "handle_export_reports"),
+        Route("GET", "/api/export/calibers.csv", "caliber activation ledger as CSV", "handle_export_calibers"),
     ]
 
 

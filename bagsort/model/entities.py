@@ -283,3 +283,108 @@ class AuditEntry:
             digest=str(raw.get("digest", "")),
             at=str(raw.get("at", "")),
         )
+
+
+@dataclass(frozen=True)
+class Caliber:
+    """An immutable, content addressed reporting caliber.
+
+    ``rules`` are the counting switches the metrics engine consumes. The
+    ``digest`` is taken over those rules alone, so a version number and a rule
+    set that disagree can be detected rather than trusted.
+    """
+
+    version: str
+    name: str
+    rules: dict[str, Any] = field(default_factory=dict)
+    digest: str = ""
+    registered_at: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "version": self.version,
+            "name": self.name,
+            "rules": _clean(self.rules),
+            "digest": self.digest,
+            "registered_at": self.registered_at,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "Caliber":
+        return cls(
+            version=str(raw.get("version", "")),
+            name=str(raw.get("name", "")),
+            rules=_clean(raw.get("rules", {})),
+            digest=str(raw.get("digest", "")),
+            registered_at=str(raw.get("registered_at", "")),
+        )
+
+
+@dataclass(frozen=True)
+class CaliberActivation:
+    """One entry in the append only activation ledger.
+
+    Only the latest activation is in force, so re-activating an older version
+    is how a caliber rollback is expressed without rewriting history.
+    """
+
+    version: str
+    at: str = ""
+    reason: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"version": self.version, "at": self.at, "reason": self.reason}
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "CaliberActivation":
+        return cls(
+            version=str(raw.get("version", "")),
+            at=str(raw.get("at", "")),
+            reason=str(raw.get("reason", "")),
+        )
+
+
+@dataclass(frozen=True)
+class ReportRun:
+    """A frozen report issuance: the caliber used, the inputs and the result.
+
+    ``watermark`` pins the report to the committed commands it was computed
+    from, which is what makes a later forward recomputation reproducible.
+    """
+
+    run_id: str
+    caliber_version: str
+    caliber_digest: str
+    watermark: int
+    metrics: dict[str, Any] = field(default_factory=dict)
+    metrics_digest: str = ""
+    basis: str = "forward"
+    at: str = ""
+    audit_sequence: int = 0
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "caliber_version": self.caliber_version,
+            "caliber_digest": self.caliber_digest,
+            "watermark": self.watermark,
+            "metrics": _clean(self.metrics),
+            "metrics_digest": self.metrics_digest,
+            "basis": self.basis,
+            "at": self.at,
+            "audit_sequence": self.audit_sequence,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "ReportRun":
+        return cls(
+            run_id=str(raw.get("run_id", "")),
+            caliber_version=str(raw.get("caliber_version", "")),
+            caliber_digest=str(raw.get("caliber_digest", "")),
+            watermark=int(raw.get("watermark", 0)),
+            metrics=_clean(raw.get("metrics", {})),
+            metrics_digest=str(raw.get("metrics_digest", "")),
+            basis=str(raw.get("basis", "forward")),
+            at=str(raw.get("at", "")),
+            audit_sequence=int(raw.get("audit_sequence", 0)),
+        )
