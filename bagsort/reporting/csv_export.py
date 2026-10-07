@@ -58,6 +58,37 @@ def load_rows(records: Iterable[object]) -> list[dict[str, object]]:
     ]
 
 
+def report_rows(reports: Iterable[object]) -> list[dict[str, object]]:
+    """One export row per issued report, carrying the fields an auditor needs
+    to tie the file back to the command journal and the audit chain."""
+
+    return [
+        {
+            "report_id": report.id,
+            "issued_at": report.issued_at,
+            "caliber_version": report.caliber_version,
+            "watermark": report.watermark,
+            "flights": report.metrics.get("flights", ""),
+            "bags": report.metrics.get("bags", ""),
+            "active_bags": report.metrics.get("active_bags", ""),
+            "sorted": report.metrics.get("sorted", ""),
+            "digest": report.digest,
+        }
+        for report in reports
+    ]
+
+
 AUDIT_COLUMNS = ("sequence", "kind", "subject", "stage", "at", "digest")
 SORT_COLUMNS = ("bag_id", "flight_id", "chute_id", "sequence", "epoch", "at")
 LOAD_COLUMNS = ("bag_id", "carousel", "batch", "at")
+REPORT_COLUMNS = (
+    "report_id",
+    "issued_at",
+    "caliber_version",
+    "watermark",
+    "flights",
+    "bags",
+    "active_bags",
+    "sorted",
+    "digest",
+)

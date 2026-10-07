@@ -761,6 +761,65 @@ def handle_rollback(server, request: Request) -> Response:
 
 
 # ---------------------------------------------------------------------------
+# caliber and shift reports
+# ---------------------------------------------------------------------------
+
+
+def handle_caliber(server, request: Request) -> Response:
+    caliber = _plant(server).caliber
+    payload: dict[str, object] = {
+        "defined": caliber.defined(),
+        "versions": caliber.versions(),
+        "consistent": caliber.consistent(),
+    }
+    if caliber.defined():
+        payload["active"] = caliber.current().as_dict()
+    return json_response(payload)
+
+
+def handle_caliber_history(server, request: Request) -> Response:
+    return json_response(_plant(server).caliber.history())
+
+
+def handle_caliber_define(server, request: Request) -> Response:
+    caliber = _plant(server).caliber.define(
+        request.int_field("version"),
+        request.required("name"),
+        request.payload.get("rules") or None,
+    )
+    return json_response(caliber.as_dict(), status=201)
+
+
+def handle_caliber_verify(server, request: Request) -> Response:
+    return json_response(_plant(server).caliber.verify())
+
+
+def handle_issue_report(server, request: Request) -> Response:
+    return json_response(_plant(server).shift_reports.issue().as_dict(), status=201)
+
+
+def handle_list_reports(server, request: Request) -> Response:
+    return json_response([report.as_dict() for report in _plant(server).shift_reports.list()])
+
+
+def handle_reports_verify(server, request: Request) -> Response:
+    return json_response(_plant(server).shift_reports.verify())
+
+
+def handle_get_report(server, request: Request) -> Response:
+    return json_response(_plant(server).shift_reports.get(request.param("id")).as_dict())
+
+
+def handle_recalculate_report(server, request: Request) -> Response:
+    return json_response(_plant(server).shift_reports.recalculate(request.param("id")))
+
+
+def handle_compare_report(server, request: Request) -> Response:
+    other = request.query_int("other", 0) or None
+    return json_response(_plant(server).shift_reports.compare(request.param("id"), other))
+
+
+# ---------------------------------------------------------------------------
 # export
 # ---------------------------------------------------------------------------
 
@@ -778,3 +837,10 @@ def handle_export_sort(server, request: Request) -> Response:
 def handle_export_loads(server, request: Request) -> Response:
     records = _plant(server).belt.loads()
     return csv_response(csv_export.render(csv_export.LOAD_COLUMNS, csv_export.load_rows(records)))
+
+
+def handle_export_reports(server, request: Request) -> Response:
+    reports = _plant(server).shift_reports.list()
+    return csv_response(
+        csv_export.render(csv_export.REPORT_COLUMNS, csv_export.report_rows(reports))
+    )

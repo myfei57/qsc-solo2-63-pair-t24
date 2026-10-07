@@ -252,6 +252,73 @@ class Sequence:
 
 
 @dataclass(frozen=True)
+class Caliber:
+    """One version of the shift-report calculation standard.
+
+    The rules are data, not code, so every historical version stays
+    computable after a newer one takes over.
+    """
+
+    version: int
+    name: str
+    rules: dict[str, Any] = field(default_factory=dict)
+    defined_at: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "version": self.version,
+            "name": self.name,
+            "rules": _clean(self.rules),
+            "defined_at": self.defined_at,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "Caliber":
+        return cls(
+            version=int(raw.get("version", 0)),
+            name=str(raw.get("name", "")),
+            rules=_clean(raw.get("rules", {})),
+            defined_at=str(raw.get("defined_at", "")),
+        )
+
+
+@dataclass(frozen=True)
+class ShiftReport:
+    """An issued shift report, pinned to the caliber version that produced it."""
+
+    id: str
+    caliber_version: int
+    watermark: int
+    issued_at: str
+    metrics: dict[str, Any] = field(default_factory=dict)
+    flights: list[dict[str, Any]] = field(default_factory=list)
+    digest: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "caliber_version": self.caliber_version,
+            "watermark": self.watermark,
+            "issued_at": self.issued_at,
+            "metrics": _clean(self.metrics),
+            "flights": _clean(self.flights),
+            "digest": self.digest,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "ShiftReport":
+        return cls(
+            id=str(raw["id"]),
+            caliber_version=int(raw.get("caliber_version", 0)),
+            watermark=int(raw.get("watermark", 0)),
+            issued_at=str(raw.get("issued_at", "")),
+            metrics=_clean(raw.get("metrics", {})),
+            flights=[dict(item) for item in raw.get("flights", [])],
+            digest=str(raw.get("digest", "")),
+        )
+
+
+@dataclass(frozen=True)
 class AuditEntry:
     sequence: int
     kind: str

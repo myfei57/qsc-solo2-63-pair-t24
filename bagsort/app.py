@@ -28,7 +28,9 @@ from bagsort.ns.namespace import Namespace
 from bagsort.ns.topology import handling_line
 from bagsort.quota.quota import QuotaBook
 from bagsort.recheck.queue import RecheckQueue
+from bagsort.reporting.caliber import CaliberBook
 from bagsort.reporting.report import PlantReport
+from bagsort.reporting.shift import ShiftReportService
 from bagsort.sequence.verdict import VerdictTracker
 from bagsort.sorter.sorter import Sorter
 from bagsort.store.store import Store
@@ -69,6 +71,8 @@ class Plant:
     quota: QuotaBook
     audit: AuditChain
     report: PlantReport
+    caliber: CaliberBook
+    shift_reports: ShiftReportService
 
     @property
     def topology(self):
@@ -123,6 +127,8 @@ class Plant:
         report = PlantReport(
             store, book, chutes, belt, quota, audit, namespace, handling_line()
         )
+        caliber = CaliberBook(store, clock, audit)
+        shift_reports = ShiftReportService(store, clock, caliber, audit)
         return cls(
             store=store,
             clock=clock,
@@ -147,6 +153,8 @@ class Plant:
             quota=quota,
             audit=audit,
             report=report,
+            caliber=caliber,
+            shift_reports=shift_reports,
         )
 
     # -- operator operations ----------------------------------------------

@@ -145,6 +145,17 @@ def route_table() -> list[Route]:
         Route("GET", "/api/audit/timeline", "audit timeline by stage", "handle_audit_timeline"),
         Route("GET", "/api/audit/out-of-order", "entries out of stage order", "handle_audit_out_of_order"),
         Route("GET", "/api/audit/bag/{bag}", "audit entries for one bag", "handle_audit_for_bag"),
+        # -- caliber and shift reports ------------------------------------
+        Route("GET", "/api/caliber", "active report caliber", "handle_caliber"),
+        Route("GET", "/api/caliber/history", "caliber change history", "handle_caliber_history"),
+        Route("POST", "/api/caliber/define", "define the next caliber version", "handle_caliber_define"),
+        Route("GET", "/api/caliber/verify", "corroborate the caliber chain", "handle_caliber_verify"),
+        Route("POST", "/api/reports", "issue a shift report", "handle_issue_report"),
+        Route("GET", "/api/reports", "list issued shift reports", "handle_list_reports"),
+        Route("GET", "/api/reports/verify", "corroborate reports with journal and audit", "handle_reports_verify"),
+        Route("GET", "/api/reports/{id}", "read one shift report", "handle_get_report"),
+        Route("POST", "/api/reports/{id}/recalculate", "recompute under the pinned caliber", "handle_recalculate_report"),
+        Route("GET", "/api/reports/{id}/compare", "pinned and other caliber side by side", "handle_compare_report"),
         # -- journal ------------------------------------------------------
         Route("GET", "/api/store/journal", "committed journal entries", "handle_journal"),
         Route("GET", "/api/store/watermark", "commit watermark", "handle_watermark"),
@@ -156,6 +167,7 @@ def route_table() -> list[Route]:
         Route("GET", "/api/export/audit.csv", "audit trail as CSV", "handle_export_audit"),
         Route("GET", "/api/export/sort.csv", "sort records as CSV", "handle_export_sort"),
         Route("GET", "/api/export/loads.csv", "load records as CSV", "handle_export_loads"),
+        Route("GET", "/api/export/reports.csv", "issued shift reports as CSV", "handle_export_reports"),
     ]
 
 
